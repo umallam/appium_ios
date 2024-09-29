@@ -1,0 +1,20 @@
+<testsuite name="regression.User Login" tests="1" errors="0" failures="0" skipped="0" time="0.000266" timestamp="2024-09-29T12:08:35.828612" hostname="MacBookPro.modem"><testcase classname="regression.User Login" name="Successful login on mobile app" status="passed" time="0.000266"><system-out>
+<![CDATA[
+@scenario.begin
+  Scenario: Successful login on mobile app
+    Given I open the app ... passed in 0.000s
+    When I enter the username and password ... passed in 0.000s
+    And I tap the login button ... passed in 0.000s
+    Then I should be logged into the app ... passed in 0.000s
+
+@scenario.end
+--------------------------------------------------------------------------------
+
+Captured stdout:
+STEP: Given I open the app
+STEP: When I enter the username and password
+STEP: When I tap the login button
+STEP: Then I should be logged into the app
+
+]]>
+</system-out></testcase></testsuite>

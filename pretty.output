@@ -1,0 +1,8 @@
+Feature: User Login # testcases/regression.feature:1
+
+  Scenario: Successful login on mobile app  # testcases/regression.feature:3
+    Given I open the app                    # testcases/steps/regression.py:1
+    When I enter the username and password  # testcases/steps/regression.py:6
+    And I tap the login button              # testcases/steps/regression.py:11
+    Then I should be logged into the app    # testcases/steps/regression.py:16
+

@@ -1,0 +1,1447 @@
+const { browser } = require('protractor');
+const { addConsoleHandler } = require('selenium-webdriver/lib/logging');
+
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+var testHelper = function () {
+
+    var fs = require('fs');
+    var path = require("path");
+    var glob = require("glob");
+    const fg = require("fast-glob");
+    const fetch = require('node-fetch');
+    const editJsonFile = require("edit-json-file");
+
+    this.getParentGUID = async function () {
+        return browser.getAllWindowHandles().then(function (allGUID) {
+            for (let guid of allGUID) {
+                console.log("Guid: " + guid);
+            }
+            return allGUID[0];
+        });
+    }
+
+    this.switchToParentTab = async function () {
+        await browser.getAllWindowHandles().then(function (handles) {
+            if (handles.length > 1) {
+                let parentTabGUID = handles[0];
+                // console.log("parentTabGUID: " + parentTabGUID);
+                browser.switchTo().window(parentTabGUID);
+
+                console.log("browser switched to parent");
+                // return allGUID[allGUID.length-1];
+            }
+        });
+    }
+
+    this.switchToLatestTab = async function () {
+        await browser.getAllWindowHandles().then(async function (handles) {
+            // console.log("No of handles: " + handles.length);
+            if (handles.length > 1) {
+                let newTabGUID = handles[handles.length - 1];
+                // console.log("newTabGUID: " + newTabGUID);
+                await browser.switchTo().window(newTabGUID);
+                // console.log("changed url " + await browser.getCurrentUrl());
+                // console.log("browser switched to new");
+            }
+        });
+    }
+
+    this.openNewTab = async function (newURL) {
+        try {
+            browser.executeScript("return window.open(arguments[0], '_blank')", newURL);
+            console.log("new tab opened");
+        } catch (e) { }
+    }
+
+    this.generateString = async function (len) {
+        var charset = "abcdefghijklmnopqrstuvwxyz";
+        var text = '';
+        for (var i = 0; i < len; i++)
+            text = text + charset.charAt(Math.floor(Math.random() * charset.length));
+        return text;
+    };
+
+
+    this.generateNumber = async function (len) {
+        len = len || 1;
+        var charset = "123456789";
+        var text = '';
+        for (var i = 0; i < len; i++) {
+            text += charset.charAt(Math.floor(Math.random() * charset.length));
+            charset = "0123456789";
+        }
+        var num = parseInt(text);
+        //console.log("number: "+num);
+        return num;
+    };
+
+    this.generateNumberLessThan = async function (_number) {
+        let num = 0;
+        if (_number > 1) {
+            numLength = _number.toString().length;
+            let randNumber = _number;
+            do {
+                randNumber = await this.generateNumber(numLength);
+            }
+            while (randNumber >= _number);
+            num = parseInt(randNumber);
+        }
+        //console.log("number: "+num);
+        return num;
+    };
+
+    function generateNum(len) {
+        len = len || 1;
+        var charset = "123456789";
+        var text = '';
+        for (var i = 0; i < len; i++) {
+            text += charset.charAt(Math.floor(Math.random() * charset.length));
+            charset = "0123456789";
+        }
+        var num = parseInt(text);
+        //console.log("number: "+num);
+        return num;
+    };
+
+    function generateNumLessThan(_number) {
+        let num = 0;
+        if (_number > 1) {
+            numLength = _number.toString().length;
+            let randNumber = _number;
+            do {
+                randNumber = generateNum(numLength);
+            }
+            while (randNumber >= _number);
+            num = parseInt(randNumber);
+        }
+        //console.log("number: "+num);
+        return num;
+    };
+
+    let casePaymentRequired = true;
+    this.updateCasePaymentRequired = async function (bolValue) {
+        casePaymentRequired = bolValue;
+    }
+
+    this.isCasePaymentRequired = async function () {
+        console.log("casePaymentRequied: " + casePaymentRequired);
+        return casePaymentRequired;
+    }
+
+    // usage username='uday' + timestamp() +'@test.com';
+    Date.prototype.yyyymmddhhmmsss = function () {
+        var yyyy = this.getFullYear();
+        var mm = this.getMonth() < 9 ? "0" + (this.getMonth() + 1) : (this.getMonth() + 1); // getMonth() is zero-based
+        var dd = this.getDate() < 10 ? "0" + this.getDate() : this.getDate();
+        var hh = this.getHours() < 10 ? "0" + this.getHours() : this.getHours();
+        var min = this.getMinutes() < 10 ? "0" + this.getMinutes() : this.getMinutes();
+        var sss = this.getMilliseconds() < 10 ? "00" + this.getMilliseconds() : (this.getMilliseconds() < 100 ? "0" + this.getMilliseconds() : this.getMilliseconds());
+        return "".concat(yyyy).concat(mm).concat(dd).concat(hh).concat(min).concat(sss);
+    };
+
+    Date.prototype.simpleDateFormat = function () {
+        var yyyy = this.getFullYear();
+        var mm = this.getMonth() < 9 ? "0" + (this.getMonth() + 1) : (this.getMonth() + 1); // getMonth() is zero-based
+        var dd = this.getDate() < 10 ? "0" + this.getDate() : this.getDate();
+
+        return "".concat(dd).concat("/").concat(mm).concat("/").concat(yyyy);
+    };
+
+
+    this.timestamp = function () {
+        var d = new Date();
+        return d.yyyymmddhhmmsss();
+    }
+
+    this.todaysDate = function () {
+        var d = new Date();
+        d.setDate(d.getDate());
+        // console.log("dateVal: "+ d.simpleDateFormat());
+        return d.simpleDateFormat();
+    }
+
+    this.getDateString = function (days) {
+        days = days || 0;
+        var d = new Date();
+        d.setDate(d.getDate() + (days));
+        // console.log("dateVal: "+ d.simpleDateFormat());
+        return d.simpleDateFormat();
+    }
+
+    this.attachScreenshot = async function () {
+        let self = this;
+        return browser.takeScreenshot()
+            .then(function (screenshot) {
+                //let decodedImage = new Buffer(screenshot.replace(/^data:image\/(png|gif|jpeg);base64,/, ''), 'base64');
+                let decodedImage = new Buffer.from(screenshot.replace(/^data:image\/(png|gif|jpeg);base64,/, ''), 'base64');
+                self.attach(decodedImage, 'image/png');
+                //console.log(“scenarioResult =”,scenarioResult.);
+            });
+    }
+
+    this.booleanValue = async function (stringName) {
+        stringName = await prepareString2(stringName);
+        // let _boolValue = false;
+        if ((stringName == "yes") || (stringName == 1) || (stringName == "1") || (stringName == true) || (stringName == "true")) {
+            return true;
+        } else {
+            return false;
+        }
+        // console.log("boolval: "+boolValue);
+
+    }
+
+    this.getDateValue = function (days) {
+        days = parseInt(days);
+        const options = { year: 'numeric', month: 'numeric', day: 'numeric' };
+        var d = new Date();
+        d.setDate(d.getDate() + (days));
+        let _date = d.toLocaleString();
+
+        // let _date2 = d.toLocaleDateString(undefined, options);
+        _simpleDate = d.simpleDateFormat();
+        console.log("_simpleDate ======" + _simpleDate);
+        return _simpleDate;
+    }
+
+    this.getInputText = async function (elementId) {
+        return elementId.getAttribute('value').then(function (text) { return text; })
+    }
+
+    this.lastCharacter = function (stringName) {
+        return stringName.slice(-1);
+    }
+
+    this.getJsonFile = function (strFileName) {
+        const configData = require('../config/env.json')
+        //console.log("data: "+data);
+        eval("parsedData = " + data);
+        return parsedData;
+    }
+
+
+
+    let titlesConfigPath = "../config/titlesConfig.json";
+    let planConfigPath = "../config/planConfig.json";
+    let elnoConfigPath = "../config/elnoConfig.json";
+    let attachmentsPath = "../data/plan/pdf/attachmentListDataDriven.json";
+
+    this.getDefaultEnvironment = async function (xyzType) {
+        xyzType = await this.prepareString(xyzType);
+        let configData = require(titlesConfigPath);
+        if ((xyzType.indexOf("plan") >= 0) || (xyzType.indexOf("xyzp") >= 0)) {
+            configData = require(planConfigPath);
+        }
+        // else{
+        //     configData = require(titlesConfigPath); 
+        // }
+
+        let env = await configData.environment;
+        return await env;
+    }
+
+    this.getLoginCredentials = async function (xyzType) {
+        xyzType = await this.prepareString(xyzType);
+        let configData = require(titlesConfigPath);
+        if ((xyzType.indexOf("plan") >= 0) || (xyzType.indexOf("xyzp") >= 0)) {
+            configData = require(planConfigPath);
+        }
+        let credentials = []
+        credentials[0] = configData.username;
+        credentials[1] = configData.password;
+        // console.log("Credentials: " + credentials[0] + " " + credentials[1])
+        return await credentials;
+    }
+
+    // this.getPlanLoginCredentials = function () {
+    //     let configData = require(planConfigPath);
+    //     let credentials = []
+    //     credentials[0] = configData.username;
+    //     credentials[1] = configData.password;
+    //     // console.log("Credentials: " + credentials[0] + " " + credentials[1])
+    //     return credentials;
+    // }
+
+    this.returnJson = function (location) {
+        let jsonFileData = require(location);
+        return jsonFileData;
+    }
+
+    this.getEnvironment = async function (xyzType) {
+        //let computerName = process.env.COMPUTERNAME.toLowerCase();
+        const defaultEnv = await this.getDefaultEnvironment(xyzType);
+        // console.log("Env ----> "+process.env.Environment);
+        let selectedEnv = process.env.Environment || defaultEnv;
+        // console.log("Environment=======>"+selectedEnv);
+
+        selectedEnv = selectedEnv.toLowerCase();
+
+        if ((selectedEnv == "test") || (selectedEnv == "uat") || (selectedEnv == "jit")) {
+            return await selectedEnv;
+        } else {
+            return await defaultEnv;
+        }
+
+    }
+
+    this.getConfigItem = function (item) {
+        var jsonFile = fs.readFileSync(require.resolve(titlesConfigPath));
+        var jsonData = JSON.parse(jsonFile);
+        //console.log("caseId from config: " + jsonData[item]);
+        return jsonData[item];
+    }
+
+
+    this.getCaseId = function (caseType) {
+        caseType = caseType || "titles";
+        let configPath = titlesConfigPath;
+        if (caseType == "elno") {
+            configPath = elnoConfigPath;
+        }
+        var jsonFile = fs.readFileSync(require.resolve(configPath));
+        var jsonData = JSON.parse(jsonFile);
+        //console.log("caseId from config: " + jsonData.caseId);
+        return jsonData.caseId;
+    }
+
+    this.updateCaseId = async function (caseId, caseType) {
+        caseId = caseId || "None"
+        caseType = caseType || "titles";
+        let configPath = titlesConfigPath;
+        if (caseType == "elno") {
+            configPath = elnoConfigPath;
+        }
+        // console.log("configPath: "+configPath+" == caseId: "+caseId);
+        if (!(caseId == "None")) {
+            let jsonFile = editJsonFile(require.resolve(configPath));
+            jsonFile.set("caseId", caseId);
+            jsonFile.save();
+        }
+    }
+
+    this.incrementDocCount = async function () {
+        let _docCount = await this.getConfigItem("docCount");
+        let jsonFile = editJsonFile(require.resolve(titlesConfigPath));
+        jsonFile.set("docCount", _docCount + 1);
+        jsonFile.save();
+    }
+
+    this.resetDocCount = async function () {
+        let jsonFile = editJsonFile(require.resolve(titlesConfigPath));
+        jsonFile.set("docCount", 0);
+        jsonFile.save();
+    }
+
+    this.updateJsonFile = async function (location, key, value) {
+        value = value || "None";
+        if (!(value == "None")) {
+            let jsonFile = editJsonFile(require.resolve(location));
+            jsonFile.set(key, value);
+            jsonFile.save();
+        }
+    }
+
+    this.resetJsonFile = async function (location, value) {
+        value = value || "None";
+        if (!(value == "None")) {
+            let jsonFile = editJsonFile(require.resolve(location));
+            for (var _key in jsonFile) {
+                console.log("key:" + _key + ", value:" + value);
+                jsonFile.set(_key, value);
+            }
+            jsonFile.save();
+            // console.log("file "+key+" updated with "+value);
+        }
+    }
+
+    this.resetAttachmentList = async function () {
+        let location = "../data/plan/pdf/attachmentListDataDriven.json";
+        let value = "false";
+        let jsonFile = editJsonFile(require.resolve(location));
+        jsonFile.set("roadApproval", value);
+        jsonFile.set("roadExemption", value);
+        jsonFile.set("dlphAdvice", value);
+        jsonFile.set("dlphInstructions", value);
+        jsonFile.save();
+    }
+
+    this.readJsonFile = function (filePath) {
+        var jsonFile = fs.readFileSync(require.resolve(titlesConfigPath));
+        var jsonData = JSON.parse(jsonFile);
+        //console.log("caseId from config: " + jsonData.caseId);
+        return jsonData;
+    }
+
+    this.getElementText = async function (elementId) {
+        return await elementId.getText().then(async function (text) {
+            // console.log("elem text: " + text);
+            // text = prepareString2(text);
+            return await text;
+        });
+    }
+
+    this.renameReport = async function () {
+        glob('./xReports/cucumber-report.*.json', function (err, reportFile) {
+
+            if (err) {
+                console.log("File error: " + err);
+            } else {
+                if ((String(reportFile) == "") || (String(reportFile) == null)) {
+                    console.log("No new report in the folder");
+                } else {
+                    var filePath = process.cwd() + String(reportFile).slice(1);
+                    console.log("report file path: " + filePath);
+                    fs.renameSync(filePath, require.resolve('../xReports/cucumber-report.json'));
+                    //console.log("Report Renamed");
+                }
+            }
+        });
+    }
+
+    this.readFileNames2 = async function (location) {
+        location = location || "./data/plan/csd/*.csd";
+        glob(location, function (err, files) {
+
+            if (err) {
+                console.log("File error: " + err);
+            } else {
+                if ((String(files) == "") || (String(files) == null)) {
+                    console.log("No CSD in the folder");
+                } else {
+                    var fileName = [];
+                    var dataValues = [];
+                    for (let i = 0; i < files.length; i++) {
+                        let fileSplit = files[i].split('/')
+                        fileName[i] = fileSplit[fileSplit.length - 1];
+                        console.log("file: " + (i + 1) + " " + fileName[i]);
+                        fileName[i] = fileName[i].replace("_Lot", "");
+                        fileName[i] = fileName[i].replace("Lot_", "");
+                        fileName[i] = fileName[i].replace(".csd", "");
+                        dataValues = fileName[i].split("_");
+                        for (let j = 0; j < dataValues.length; j++) {
+                            console.log(dataValues[j]);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // this.pickCsdFile = async function (csdFile, fromLocation) {
+    //     fromLocation = fromLocation || "./data/plan/csd/*.csd";
+    //     fromLocation = fromLocation.replace("..", ".");
+    //     return await fg(fromLocation, { dot: true }).then(async function (files) {
+
+    //         if ((String(files) == "") || (String(files) == null) || (String(files) == "undefined")) {
+    //             console.log("No CSD in the folder");
+    //         } else if (!(csdFile == "none")) {
+    //             let selected = 0;
+    //             for (let i = 0; i < files.length; i++) {
+    //                 let fileName = path.basename(files[i]).toString().toLowerCase();
+    //                 if (fileName.indexOf(csdFile) >= 0) {
+    //                     i = files.length;
+    //                     selected = 1;
+    //                     return fileName;
+    //                 } else if ((selected == 0) && (i == files.length - 1)) {
+    //                     console.log("*** CSD provided in data not found, please check data, selecting random CSD ***");
+    //                     await delaySeconds2(30);
+    //                     let rand = generateNumberLessThan(files.length);
+    //                     fileName = path.basename(files[rand]).toString().toLowerCase();
+    //                     return fileName;
+    //                 }
+    //             }
+
+    //         } else {
+    //             // var dataValues = [];
+    //             let rand = generateNumberLessThan(files.length);
+    //             let fileName = path.basename(files[rand]).toString().toLowerCase();
+    //             return fileName;
+    //             // console.log("fileName "+fileName)
+    //             // return dataValues = fileName.replace(/lot_/gi, "lot").replace(".csd", "").split("_");
+    //             // console.log("dataValues=> " + dataValues);
+    //             // return dataValues;              
+    //         }
+    //     });
+    // }
+
+    this.pickCsdFile = async function (csdFile, fileType, fromLocation) {
+        return this.pickFile(csdFile, fileType, fromLocation);
+    }
+
+    this.pickCsvFile = async function (csvFile, fileType, fromLocation) {
+        fileType = await this.prepareString(fileType, "csv");
+        return this.pickFile(csvFile, fileType, fromLocation);
+    }
+
+    this.pickFile = async function (providedFileName, fileType, fromLocation) {
+        fileType = await this.prepareString(fileType);
+        if (fileType.indexOf("csv") >= 0) {
+            fromLocation = fromLocation || "./data/plan/csv/*.csv";
+        } else {
+            fromLocation = fromLocation || "./data/plan/csd/*.csd";
+        }
+        fromLocation = fromLocation.replace("..", ".");
+        return await fg(fromLocation, { dot: true }).then(async function (files) {
+
+            if ((String(files) == "") || (String(files) == null) || (String(files) == "undefined")) {
+                console.log("No CSD in the folder");
+            } else if (!(providedFileName == "none")) {
+                let selected = 0;
+                for (let i = 0; i < files.length; i++) {
+                    let fileName = path.basename(files[i]).toString().toLowerCase();
+                    if (fileName.indexOf(providedFileName) >= 0) {
+                        i = files.length;
+                        selected = 1;
+                        return fileName;
+                    } else if ((selected == 0) && (i == files.length - 1)) {
+                        console.log("*** CSD or CSV provided in data not found, please check data, selecting random CSD ***");
+                        await delaySeconds2(30);
+                        let rand = generateNumLessThan(files.length);
+                        fileName = path.basename(files[rand]).toString().toLowerCase();
+                        return fileName;
+                    }
+                }
+
+            } else {
+                // var dataValues = [];
+                let rand = generateNumLessThan(files.length);
+                let fileName = path.basename(files[rand]).toString().toLowerCase();
+                return fileName;
+                // console.log("fileName "+fileName)
+                // return dataValues = fileName.replace(/lot_/gi, "lot").replace(".csd", "").split("_");
+                // console.log("dataValues=> " + dataValues);
+                // return dataValues;              
+            }
+        });
+    }
+
+    this.updatePlanData = async function (csdFile) {
+        csdFile = await this.prepareString(csdFile);
+        let location = "../data/plan/planData.json";
+        let fileName = await this.pickCsdFile(csdFile);
+        // console.log("fileName: "+fileName)
+        let flSplit = fileName.split("(");
+        let coordinateSystem = "none";
+        if (flSplit.length > 1) {
+            coordinateSystem = flSplit[1].replace(").csd", "");
+        }
+        let fileNameData = flSplit[0].replace(/lot_/gi, "lot").replace(".csd", "").replace(".csv", "").split("_");
+        console.log("fileNameData: " + fileNameData);
+        let planData = editJsonFile(require.resolve(location)); //this.returnJson("../data/plan/planData.json");
+
+        let otherInfo = "";
+        let excessInfo = fileNameData.length % 2;
+        if ((fileNameData.length > 2) && (excessInfo == 0)) {
+            otherInfo = fileNameData.pop();
+            fileNameData = fileNameData.slice(0, fileNameData.length);
+            // console.log("fileNameData2: " + fileNameData);
+        }
+
+        let lotCount = fileNameData.pop();
+
+        let filePlanData = fileNameData.slice(0, fileNameData.length);
+        var planInfoData = [];
+        for (let i = 0; i < filePlanData.length; i = i + 2) {
+            let k = Math.floor(i / 2);
+            var data = { parentPlan: filePlanData[i], parentLot: filePlanData[i + 1] };
+            planInfoData.push(data);
+        }
+
+        planData.set("fileName", fileName);
+        planData.set("numberOfPlanLots", lotCount);
+        planData.set("planInfo", planInfoData);
+        planData.set("otherInfo", otherInfo);
+        planData.set("coordinateSystem", coordinateSystem);
+        planData.save();
+    }
+
+    // this.uploadAttachment = function(attachmentType) {
+    //     let dir = "pdf"; let fileExtn = ".pdf"; let fileName = "";
+
+    //     if (!("cadastral".indexOf(attachmentType.slice(0, 4)) == -1)) {
+    //         dir = "csd"; fileExtn = ".csd";
+    //         let planData = await helper.returnJson("../data/plan/planData.json");
+    //         fileName = planData.fileName;
+    //     }
+
+    //     if (attachmentType =="csv") {
+    //         dir = "csv"; fileExtn = ".csv";
+    //         let planData = await helper.returnJson("../data/plan/planData.json");
+    //         fileName = planData.fileName;
+    //     }
+
+    //     if (fileName == "") {
+    //         let location = "./data/plan/" + dir + "/*" + fileExtn;
+    //         // console.log("location to pick file: " + location);
+    //         fileName = await helper.pickFileName(location, attachmentType);
+    //         // console.log("File being used " + process.cwd() + "\\data\\plan\\" + dir + "\\" + fileName);
+    //     }
+
+
+    //     await fileToUploadField.sendKeys(process.cwd() + "\\data\\plan\\" + dir + "\\" + fileName);
+    //     await uploadButton.click();
+    // }
+
+
+    //CSV File related functions
+    this.pickCsvFile1 = async function (csvFile, fromLocation) {
+        fromLocation = fromLocation || "./data/plan/csv/*.csv";
+        fromLocation = fromLocation.replace("..", ".");
+        return await fg(fromLocation, { dot: true }).then(async function (files) {
+
+            if ((String(files) == "") || (String(files) == null) || (String(files) == "undefined")) {
+                console.log("No CSV in the folder");
+            } else if (!(csvFile == "none")) {
+                let selected = 0;
+                for (let i = 0; i < files.length; i++) {
+                    let fileName = path.basename(files[i]).toString().toLowerCase();
+                    if (fileName.indexOf(csvFile) >= 0) {
+                        i = files.length;
+                        selected = 1;
+                        return fileName;
+                    } else if ((selected == 0) && (i == files.length - 1)) {
+                        console.log("*** CSV provided in data not found, please check data, selecting random CSV ***");
+                        await delaySeconds2(30);
+                        let rand = generateNumLessThan(files.length);
+                        fileName = path.basename(files[rand]).toString().toLowerCase();
+                        return fileName;
+                    }
+                }
+
+            } else {
+                // var dataValues = [];
+                let rand = generateNumLessThan(files.length);
+                let fileName = path.basename(files[rand]).toString().toLowerCase();
+                return fileName;
+                // console.log("fileName "+fileName)
+                // return dataValues = fileName.replace(/lot_/gi, "lot").replace(".csd", "").split("_");
+                // console.log("dataValues=> " + dataValues);
+                // return dataValues;              
+            }
+        });
+    }
+
+    this.updateCsvPlanData = async function (csvFile) {
+        csvFile = await this.prepareString(csvFile);
+        let location = "../data/plan/planData.json";
+        let fileName = await this.pickCsvFile(csvFile);
+        // console.log("fileName: "+fileName)
+        let flSplit = fileName.split("(");
+        let coordinateSystem = "none";
+        if (flSplit.length > 1) {
+            coordinateSystem = flSplit[1].replace(").csv", "");
+        }
+        let fileNameData = flSplit[0].replace(/lot_/gi, "lot").replace(".csv", "").split("_");
+        console.log("fileNameData: " + fileNameData);
+        let planData = editJsonFile(require.resolve(location)); //this.returnJson("../data/plan/planData.json");
+
+        let otherInfo = "";
+        let excessInfo = fileNameData.length % 2;
+        if ((fileNameData.length > 2) && (excessInfo == 0)) {
+            otherInfo = fileNameData.pop();
+            fileNameData = fileNameData.slice(0, fileNameData.length);
+            // console.log("fileNameData2: " + fileNameData);
+        }
+
+        let lotCount = 1;
+        if (fileNameData.length > 2) {
+            lotCount = fileNameData.pop();
+        }
+
+        let filePlanData = fileNameData.slice(0, fileNameData.length);
+
+        var planInfoData = [];
+        for (let i = 0; i < filePlanData.length; i = i + 2) {
+            let k = Math.floor(i / 2);
+            var data = { parentPlan: filePlanData[i], parentLot: filePlanData[i + 1] };
+            planInfoData.push(data);
+        }
+
+        planData.set("fileName", fileName);
+        planData.set("numberOfPlanLots", lotCount);
+        planData.set("planInfo", planInfoData);
+        planData.set("otherInfo", otherInfo);
+        planData.set("coordinateSystem", coordinateSystem);
+        planData.save();
+    }
+
+    // pick the file or pdf related to the attachment
+    this.pickFileName = async function (location, attachmentType) {
+        attachmentType = attachmentType || "dummy";
+        let fileWords = attachmentType.split(" ");
+        return await fg(location, { dot: true }).then(async function (files) {
+            if ((String(files) == "") || (String(files) == null)) {
+                console.log("No CSD in the folder");
+            } else {
+                var reqdFiles = [];
+                for (let i = 0; i < files.length; i++) {
+                    if (location.split(".").pop() == "csd") {
+                        reqdFiles[i] = path.basename(files[i]).toString();
+                        // console.log("file: " + (i + 1) + " " + reqdFiles[i]);
+                    } else {
+                        let fileName = path.basename(files[i]).toString().toLowerCase();
+                        let count = 0;
+                        for (let j = 0; j < fileWords.length; j++) {
+                            // console.log("file: " + (i + 1) + " "+ fileName+" looking for "+ fileWords[j]);
+                            if (!(fileName.indexOf(fileWords[j]) == -1)) {
+                                count++;
+                                // console.log("success "+count + " of "+fileWords.length);
+                                if (count == fileWords.length) {
+                                    // console.log("Adding to list file name: "+fileName);
+                                    reqdFiles.push(fileName);
+                                }
+                            } else { j = fileWords.length; }
+                        }
+                    }
+
+                    if (i >= files.length - 1) {
+                        // console.log("reqdFiles-length: " + reqdFiles.length);
+                        let randNum = generateNumLessThan(reqdFiles.length);
+                        // console.log("rand num: " + randNum);
+                        var selectedFileName = reqdFiles[randNum]
+                        // var selectedFileName = reqdFiles[randNum].toString();
+                        console.log("file selected: " + selectedFileName);
+                        return selectedFileName;
+                    }
+                }
+
+
+            }
+        });
+    }
+
+    this.pickFileName2 = async function (location) {
+        location = location || "./data/plan/csd/*.csd";
+        glob(location, function (err, files) {
+
+            if (err) {
+                console.log("File error: " + err);
+            } else {
+                if ((String(files) == "") || (String(files) == null)) {
+                    console.log("No CSD in the folder");
+                } else {
+                    let fileName = [];
+                    for (let i = 0; i < files.length; i++) {
+                        fileName = path.basename(files[i]);
+                        // let fileLocationSplit = files[i].split('/')
+                        // fileName[i] = fileLocationSplit[fileLocationSplit.length - 1];
+                        // console.log("file: " + (i + 1) + " " + fileName[i]);
+                    }
+                    if (fileName.length == 1) {
+                        return fileName[0].toString();
+                    } else {
+                        let rand = generateNumLessThan(fileName.length);
+                        console.log("file selected: " + fileName[rand]);
+                        var selectedFileName = fileName[rand].toString();
+                        // console.log("2=== " + selectedFileName);
+                        return selectedFileName;
+                    }
+                }
+            }
+        });
+    }
+
+
+    this.pickFileName32 = async function (location) {
+        location = location || "./data/plan/csd/*.csd";
+        const files = fs.readdirSync(location);
+
+        // files.forEach(function (file) {
+        //     console.log(file);
+        // });
+        var fileName = [];
+        for (let i = 0; i < files.length; i++) {
+            let fileLocationSplit = files[i].split('/')
+            fileName[i] = fileLocationSplit[fileLocationSplit.length - 1];
+            console.log("file: " + (i + 1) + " " + fileName[i]);
+        }
+        let rand = await this.generateNumLessThan(fileName.length);
+        console.log("file selected: " + fileName[rand]);
+        var selectedFileName = fileName[rand].toString();
+        console.log("2=== " + selectedFileName);
+        return selectedFileName;
+
+    }
+
+    this.isVisible = async function (element) {
+        console.log("---------1");
+        return await element.isDisplayed().then(async function (elementVisible) {
+            let status = elementVisible[0];
+            console.log("---------2 " + status);
+            if (!((status == "t") || (status == true))) { status = false; } else { status = true; }
+            console.log("Element Visible " + status);
+            return status;
+        });
+    }
+
+    this.verifyElement1 = async function (element) {
+        var result = await browser.wait(element.isPresent().then(async function (status) {
+            console.log("Element Visible " + status);
+            return status;
+        }), 2000).then(() => { return true; }).catch(() => { return false; });
+        // console.log("result: " + result);
+        return result;
+    }
+
+    this.verifyElement = async function (elementId) {
+        var result = await browser.wait(elementId.isPresent(), 2000).then(() => { return true; }).catch(() => { return false; });
+        // console.log("result: " + result);
+        return result;
+    }
+
+    this.getMultiElementCount = async function (multielement) {
+        let count = 0;
+        try {
+            return await multielement.then(async function (list) {
+                // console.log("multielement count " + list.length);
+                return list.length;
+            });
+        } catch (e) { return count; }
+    }
+
+
+    // The following function selects an element with specific text from the list
+    // This can also be used to select an input element such as radio or checkbox against some specific text
+    this.selectListElementWithText = async function (multielement, textval, actualInputElement) {
+        let selected = 0;
+        textval = textval || "====";
+        textval = textval.toString();
+        textval = textval.toLowerCase().trim();
+
+        await multielement.then(async function (list) {
+            //console.log("list length: "+list.length);
+            let location = 0;
+            let randomNumber = generateNumLessThan(list.length);
+            if (textval == "====") {
+                location = randomNumber;
+                await list[randomNumber].getText().then(async function (elementText) {
+                    if (elementText.trim() == null) { location = location + 1; }
+                    await multielement.get(location).click();
+                });
+
+            } else if (textval == "latest") {
+                location = list.length - 1;
+                //console.log("latest version location: "+location);
+                await multielement.get(location).click();
+            } else {
+                for (let i = 0; i < list.length; i++) {
+                    try {
+                        await list[i].getText().then(async function (elementText) {
+                            elementText = await elementText.toLowerCase().trim();
+                            //   console.log((i+1)+" "+"Actual:========= "+elementText+" Expected:========= "+textval);
+                            //if (elementText.trim() == textval.trim()) {
+                            if (!(elementText.indexOf(textval) == -1)) {
+                                selected = 1;
+                                location = i;
+                                if (actualInputElement) {
+                                    //await actualInputElement.get(location).isSelected().then(async function(status){
+                                    await selectCheckbox2(actualInputElement.get(location));
+                                    // await actualInputElement.get(i).getAttribute("class").then(async function(classText){
+                                    //     //console.log(" Element status==========> "+classText);
+                                    //         if (classText.indexOf('active') == -1){
+                                    //             await actualInputElement.get(location).click();
+                                    //         }                                         
+                                    // });
+
+                                } else {
+                                    await clickElement2(multielement.get(location));
+                                    // await this.clickElement(multielement.get(location));
+                                    //await multielement.get(location).click();
+                                }
+                                i = list.length;
+                            }
+
+                            if ((selected == 0) && (i == (list.length - 1))) {
+                                console.log("Element with Text '" + textval + "' not found selecting random element");
+                                await multielement.get(randomNumber).click();
+                            }
+                        });
+
+                    } catch (e) { }
+                }
+            }
+        });
+    }
+
+
+    this.returnElementLocationInList = async function (multielement, textval) {
+        textval = await this.prepareString(textval);
+        return await multielement.then(async function (list) {
+            //console.log("list length: "+list.length);
+            let location = 0;
+
+            for (let i = 0; i < list.length; i++) {
+                try {
+                    var loc = await list[i].getText().then(async function (elementText) {
+                        elementText = await elementText.toLowerCase().trim();
+                        // console.log("Actual:========= "+elementText+" Expected:========= "+textval);
+                        if (!(elementText.indexOf(textval) == -1)) {
+                            location = i;
+                            i = list.length - 1;
+                            return location;
+                        }
+
+                    });
+                } catch (e) { }
+            }
+
+            return loc;
+        });
+    }
+
+    this.returnColumnLocation = async function (tableRows, columnNumber, textVal) {
+        textVal = await this.prepareString(textVal);
+        textVal = textVal.split("_");
+        return await tableRows.then(async function (rows) {
+            // console.log("Number of rows: " + rows.length);
+            let location = 99; //let loc=[];
+            for (let i = 0; i < rows.length; i++) {
+                try {
+                    var loc = await tableRows.get(i).$$('td').get(columnNumber).getText().then(async function (elementText) {
+                        // console.log("text: " + i + " " + elementText+" - "+textVal);
+                        for (let j = 0; j < textVal.length; j++) {
+                            if (!(elementText.toLowerCase().indexOf(textVal[j].toLowerCase()) == -1)) {
+                                if (j == textVal.length - 1) {
+                                    location = i;
+                                    i = rows.length - 1;
+                                }
+                            } else {
+                                j = textVal.length;
+                            }
+                        }
+
+                        if (i == rows.length - 1) {
+                            return location;
+                        }
+                    });
+                } catch (e) { }
+            }
+            return loc;
+        });
+
+    }
+
+    this.returnColumnValues = async function (tableRows, columnNumber) {
+        var columnList = [];
+        for (let i = 0; i < tableRows.length; i++) {
+            var data = await this.getElementText(tableRows.get(i).$$('td').get(columnNumber));
+            console.log("data: " + data)
+            columnList = columnList.push(data);
+            if (i == i.length - 1) {
+                return columnList;
+            }
+        }
+    }
+
+    this.processing = async function () {
+        //const processingWheel = $$('div[class^="cg-busy cg-busy-backdrop cg-busy-backdrop-animation ng-scope"]+div[class^="cg-busy cg-busy-animation ng-scope"]').first();
+        //const processingWheel = $$('div[class^="cg-busy cg-busy-backdrop cg-busy-backdrop-animation ng-scope"]+div[class^="cg-busy cg-busy-animation ng-scope"]');
+
+        // const processingWheel = $$('div[class^="cg-busy cg-busy-animation ng-scope"][class$="ng-hide"]');
+        const processingWheel = $$('div[class^="ng1-app cg-busy cg-busy-animation ng-scope"]');
+
+        await processingWheel.then(async function (list) {
+            // console.log("processing wheels: "+list.length);
+            let count = 0;
+            do {
+                for (let i = 0; i < list.length; i++) {
+                    try {
+                        let classText = await getClassAttributeText2(processingWheel.get(i));
+                        while (classText.indexOf('ng-hide') == -1) {
+                            classText = await getClassAttributeText2(processingWheel.get(i));
+                            // console.log("classText: "+classText);
+                        }
+                    } catch (e) { }
+                }
+                count++;
+            } while (count < 2);
+        });
+    }
+
+    this.planProcessing = async function () {
+        const processingWheel = $('div[class="ng-busy-default-sign"]');
+        let EC1 = protractor.ExpectedConditions;
+        await browser.wait(EC1.not(EC1.visibilityOf(processingWheel)));
+    }
+
+    this.selectInputsWithText = async function (elementsTable, elementText) {
+        elementText = elementText || "===="
+        // console.log("====> "+elementText);
+        if (!(elementText == "====")) {
+            let elementTextArray = elementText.split(",");
+            let actualInput = elementsTable.$$('tr>td>div>i');
+            let textList = elementsTable.$$('tr>td>div>i+span');
+
+            for (let i in elementTextArray) {
+                //console.log("text: "+i+" "+elementTextArray[i]);
+                await this.selectListElementWithText(textList, elementTextArray[i], actualInput);
+            }
+        }
+    }
+
+    // this.selectListElementWithText= async function(multielement, textval) {
+    //     let location = this.getListElementLocation(multielement, textval);
+    //     console.log("returned value: "+location);
+    //     //await multielement.get(location).click();
+    // }
+
+
+    // this.selectOptionWithText = async function(selectElement, textval) {
+    //     let seletoptions = selectElement.$$("option");
+    //     let location = this.getListElementLocation(seletoptions, textval);
+    //     //selectElement.Click();
+    //     await selectElement.ClickItem(location);
+    // }
+
+    this.selectOptionWithText = async function (selectElement, textval) {
+        //console.log("Textval: "+textval);
+        let selected = 0;
+        textval = textval || "====";
+        textval = textval.toLowerCase();
+        let options = selectElement.all(by.tagName('option'));
+
+        //var elemval = options.then(async function (list) {
+        await options.then(async function (list) {
+            let location = 0;
+            //console.log("length "+list.length);
+            let randomNumber = generateNumLessThan(list.length);
+            if (textval == "====") {
+                location = randomNumber;
+                await list[randomNumber].getText().then(async function (elementText) {
+                    if (elementText.trim() == null) {
+                        location = location + 1;
+                    }
+                    await options.get(location).click();
+                });
+
+            } else if (textval == "latest") {
+                location = list.length - 1;
+                //console.log("latest version: "+location);
+                await options.get(location).click();
+            } else {
+                for (let i = 0; i < list.length; i++) {
+                    await list[i].getText().then(async function (elementText) {
+                        elementText = await elementText.toLowerCase();
+                        //console.log("Actual:========= "+elementText+" Expected:========= "+textval);
+                        if (elementText.trim() == textval.trim()) {
+                            selected = 1;
+                            location = i;
+                            await options.get(location).click();
+                            i = list.length;
+                        }
+
+                        if ((selected == 0) && (i == (list.length - 1))) {
+                            console.log("Element Text not found selecting random element");
+                            location = randomNumber;
+                            await options.get(location).click();
+                        }
+                    });
+                }
+            }
+
+        });
+
+    }
+
+    this.selectCheckbox = async function (element) {
+        let classText = await this.getClassAttributeText(element);
+        // console.log("checkbox text: " + classText);
+
+        // while (!((classText.indexOf('active') >=0) || (classText.indexOf('unselected') == -1) || (classText.indexOf('ng-not-empty') >=0))) {
+        while (!((classText.indexOf('active') >= 0) || (classText.indexOf('not-empty') >= 0))) {
+            // console.log("checkbox text: " + classText);
+            await this.clickElement(element);
+            classText = await this.getClassAttributeText(element);
+        }
+    }
+
+    this.deSelectCheckbox = async function (element) {
+        let classText = await this.getClassAttributeText(element);
+        while (!((classText.indexOf('active') == -1) || (classText.indexOf('not-empty') == -1))) {
+            await this.clickElement(element);
+            classText = await this.getClassAttributeText(element);
+        }
+    }
+
+    async function selectCheckbox2(element) {
+        await element.getAttribute("class").then(async function (classText) {
+            //console.log(" Element status==========> "+classText);
+            if (classText.indexOf('active') == -1) {
+                await element.click();
+            }
+        });
+    }
+
+    this.selectDropdown = async function (element) {
+        let classText = await getClassAttributeText2(element);
+
+        let selected = 0;
+        do {
+            // console.log(" Element class text==========> " + classText);
+            if (classText.indexOf('open') >= 0) {
+                selected = 20
+            } else {
+                await element.click();
+                classText = await getClassAttributeText2(element);
+            }
+            selected++;
+        } while (selected < 20);
+    }
+
+    async function unSelectCheckbox2(element) {
+        await element.getAttribute("class").then(async function (classText) {
+            //console.log(" Element status==========> "+classText);
+            if (classText.indexOf('active') >= 0) {
+                await element.click();
+            }
+        });
+    }
+
+    async function getClassAttributeText2(element) {
+        try {
+            return await element.getAttribute("class").then(async function (classText) {
+                //console.log("Element class attribute text: "+classText);
+                return classText;
+            });
+        } catch (e) { }
+
+    }
+
+    this.getClassAttributeText = async function (element) {
+        return await element.getAttribute("class").then(async function (classText) {
+            // console.log("Element class attribute text: "+classText);
+            return await classText;
+        });
+    }
+
+    async function prepareString2(stringText, defaultValue) {
+        // console.log("initialText: " + stringText);
+        defaultValue = defaultValue || "none";
+        if (stringText == "none") { stringText = ""; }
+
+        if (!(defaultValue == "")) {
+            stringText = stringText || defaultValue;
+            stringText = stringText.toString();
+            stringText = stringText.toLowerCase().trim();
+        }
+
+        stringText = stringText || defaultValue;
+        // console.log("stringText: " + stringText);
+        return await stringText;
+    }
+
+    this.prepareString = async function (stringText, defaultValue) {
+        return await prepareString2(stringText, defaultValue)
+    }
+
+    this.compareStrings = async function (stringOne, stringTwo) {
+        stringOne = stringOne.toLowerCase().trim();
+        // console.log("strinone: " + stringOne);
+        stringTwo = stringTwo.toLowerCase().trim();
+        return await stringOne.includes(stringTwo);
+    }
+
+    this.separateCharectersAndNumbers = async function (strVal) {
+        var pattern1 = /[a-zA-Z]/g;
+        var pattern2 = /[0-9]/g;
+        var result = [];
+        result[0] = strVal.match(pattern1);
+        result[0] = result[0].join('');
+        result[1] = strVal.match(pattern2);
+        result[1] = result[1].join('');
+        return result;
+    }
+
+    const driver = require('selenium-webdriver');
+    this.sendEnterKey = async function (element) {
+        await this.delaySeconds(0.3);
+        await element.sendKeys(driver.Key.ENTER);
+    }
+
+    this.enterText = async function (element, text) {
+        // await element.getText().then(async function (elementText) {
+        //     if (!(elementText == text)) {
+        //         await element.clear().then(async function () {
+        //             await element.sendKeys(text);
+        //         });
+        //     }
+        // });
+        text = await prepareString2(text);
+        if (!(text == "none")) {
+            // try{
+            await element.clear();
+            await element.sendKeys(text + driver.Key.TAB);
+            await this.clickElement(element);
+            // }catch(e){}
+
+        }
+    }
+
+    this.enterTextIfAvailable = async function (elementId, text) {
+        // let selected = 0
+        // do {
+        try {
+            await this.enterText(elementId, text);
+            // selected = 2;
+        } catch (e) { }
+        //     selected++;
+        // } while (selected < 1);
+    }
+
+
+    async function clickElement2(elementId) {
+        let selected = 0
+        do {
+            try {
+                await elementId.click();
+                selected = 10;
+            } catch (e) {
+                // await this.delaySeconds(0.20);
+                // console.log("======="+selected+" "+e);
+                if (selected == 8) {
+                    // console.log("Element Clicking Issue : " + e);
+                    //return e;
+                }
+            }
+            selected++;
+        } while (selected < 9);
+    }
+
+    this.clickElement = async function (elementId) {
+        // await clickElement2(elementId);
+        let selected = 0
+        do {
+            try {
+                await elementId.click();
+                selected = 20;
+            } catch (e) {
+                await this.delaySeconds(0.5).then(async function () {
+                    // console.log("======="+selected+" "+e);
+                    if (selected == 18) {
+                        // console.log("Element Clicking Issue : " + e);
+                        //return e;
+                    }
+                });
+
+            }
+            selected++;
+        } while (selected < 19);
+    }
+
+    this.clickElementTwice = async function (elementId) {
+        await this.clickElement(elementId);
+        await this.clickElement(elementId);
+    }
+
+    this.clickElementIfAvailable = async function (elementId) {
+        let selected = 0
+        do {
+            try {
+                await elementId.isDisplayed().then(async function (visible) {
+                    if (visible == true) {
+                        await elementId.click();
+                        selected = 10;
+                    }
+                });
+            } catch (e) { }
+            selected++;
+        } while (selected < 5);
+    }
+
+    this.selectFromVisibleElements = async function (multiElementId) {
+        await multiElementId.then(async function (buttons) {
+            for (let i = 0; i < buttons.length; i++) {
+                await multiElementId.get(i).isDisplayed().then(async function (visible) {
+                    if (visible == true) {
+                        await clickElement2(multiElementId.get(i));
+                        i = buttons.length;
+                    }
+                });
+            }
+        });
+    }
+
+    this.selectDropdownToDisplay = async function (elementId, dropdownList) {
+        let dropdownListCount = 0;
+        do {
+            await this.clickElement(elementId);
+            dropdownListCount = await this.getMultiElementCount(dropdownList);
+        } while (dropdownListCount == 0);
+
+    }
+
+    this.delaySeconds = async function (seconds) {
+        seconds = seconds || 2;
+        seconds = (seconds * 1000);
+        await browser.sleep(seconds);
+    }
+
+    async function delaySeconds2(seconds) {
+        seconds = seconds || 2;
+        seconds = (seconds * 1000);
+        await browser.sleep(seconds);
+    }
+
+    this.isElementPresent = async function (elementVal) {
+        await this.delaySeconds(0.5);
+        let result = await browser.isElementPresent(elementVal);
+        // console.log("result: " + result);
+        return result;
+    }
+
+    this.generateError = async function () {
+        let misc = 0;
+        console.log("******* user generated error to stop the flow ******* ");
+        await misc.click();
+        // try{
+        //     await misc.click();
+        // }catch(e){ console.log("******* user generated error ******* ");}
+
+    }
+
+    this.downloadPDF2 = async function (url) {
+        // var pdf = url;
+
+        var options = {
+            directory: "./data/plan/pdf/unsigned/",
+            filename: "abcd.pdf"
+        }
+        try {
+            download2(url, options, function (err) {
+                if (err) throw err
+                console.log("PDF saving error");
+            })
+        } catch (e) {
+            console.log("download filed")
+        }
+
+    }
+
+    this.downloadPDF = async function (url) {
+        try {
+            download(url, "abcd.pdf");
+        } catch (e) {
+            console.log("download filed")
+        }
+
+    }
+
+    var request = require('request');
+    this.downloadBlob5 = async function (bloburl) {
+        // var fs = require('fs');
+        // var request = require("request");
+
+        console.log("=======1");
+        request({ uri: bloburl, headers: { 'Content-type': 'applcation/pdf' } }, function (error, response, body) {
+            console.log("=======2");
+            if (!error && response.statusCode == 200) {
+                console.log("=======3");
+                fs.writeFileSync("pdf2sign.pdf", body, 'binary');
+                console.log("=======4");
+            } else {
+                console.log("Pdf saving error : " + error);
+            }
+        });
+    }
+
+
+    this.downloadBlob = async function (bloburl) {
+        // const fetch = require('node-fetch');
+        // const fs = require('fs');
+        // var options = {
+        //     directory: "./data/plan/pdf/unsigned/",
+        //     filename: "abcd.pdf"
+        // }
+        // fetch(bloburl,options)
+        // fetch(bloburl)
+
+
+        fetch(bloburl, { method: 'GET', headers: { 'Content-type': 'applcation/pdf' } })
+            .then(res => res.buffer())
+            .then(data => {
+                fs.createWriteStream('sign_plan.pdf').write(data);
+                console.log("report file path: " + filePath);
+            })
+            .catch(e => {
+                console.log(e);
+            });
+    }
+
+
+    this.downloadBlob3 = async function (bloburl) {
+        try {
+            console.log("bloburl: " + bloburl);
+            var options = { method: 'GET', url: bloburl }
+            request(options, function (error, response) {
+                // var blob = new Blob([response], { type: 'application/pdf' });
+                // var url = window.URL.createObjectURL(blob);
+
+                let buffer = Buffer.from(arraybuffer);
+                let arraybuffer = Uint8Array.from(buffer).buffer;
+
+                var blob = new Blob([response], { type: 'application/pdf' });
+                var url = window.URL.createObjectURL(blob);
+
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = "./data/plan/pdf/unsigned/xyz.pdf";
+
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // Recommended: revoke the object URL after some time to free up resources.
+                // There is no way to know when the download is complete.
+                setTimeout(function () { window.URL.revokeObjectURL(url); }, 60000);
+            });
+        } catch (e) { console.log("1 download filed " + e); }
+    }
+
+    this.downloadBlob2 = async function (bloburl) {
+        try {
+            // var options = { method: 'GET', url: bloburl}
+            // request(options, function (error, response) {
+            // var blob = new Blob([response], { type: 'application/pdf' });
+            var blob = new Blob(bloburl, { type: 'application/pdf' });
+            var url = window.URL.createObjectURL(blob);
+
+            var link = document.createElement('a');
+            link.href = url;
+            link.download = "xyz.pdf";
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Recommended: revoke the object URL after some time to free up resources.
+            // There is no way to know when the download is complete.
+            setTimeout(function () { window.URL.revokeObjectURL(url); }, 60000);
+            // });
+        } catch (e) { console.log("2 download filed " + e); }
+    }
+
+    this.getUrl = async function () {
+        return await browser.getCurrentUrl();
+    }
+
+    this.openBrowser = async function (URI) {
+        // console.log(URI);
+        await browser.get(URI);
+    }
+
+    this.closeBrowser = async function () {
+        await browser.close();
+    }
+
+    this.maximiseWindow = async function () {
+        await browser.driver.manage().window().maximize();
+    }
+
+    this.refreshBrowser = async function () {
+        await browser.refresh();
+        await this.delaySeconds(5);
+    }
+
+};
+module.exports = new testHelper();
